@@ -187,59 +187,80 @@ unsigned long mmcWriteBlocks(CSDRegister csdReg, unsigned long address, unsigned
 char mmcInitialization(void)
 {
   unsigned char init_complete = 0;
-  unsigned int counter = 0;
+  unsigned int counter;
   unsigned short response = 0x0000;
   unsigned long return_value = 0xFFFFFFFF;
 
-  /*0. initialize buffers*/
+  /*1. initialize buffers*/
   mmcInitBuffers();
-  
-  /*1. set the chip select line active and keep it all the way through*/
-  MMC_NSS_Low;
-  
+
+  /*2. go to an idle state*/
   counter = 0;
   do
   {
-    /*2. send a reset (CMD_0) signal*/
+    /*2.1. set the chip select line active*/
+    MMC_NSS_Low;
+
+    /*2.2. send a reset (CMD_0) signal*/
     mmcSendCMD(CMD_0,0x00000000);
-    mmcReadResponse(20);
+    mmcReadResponse(2);
     response = mmcGetR1Response();
-  
-    /*3. inquire the host supply voltage*/
-    mmcSendCMD(CMD_8,0x000001AA);
-    mmcReadResponse(8);
-    response = mmcGetR3orR7Response(&return_value);
+    if (response == R1_IN_IDLE_STATE)
+    {
+      break;
+    }
+
+    /*2.3. set the chip select line inactive*/
+    MMC_NSS_High;
     
     counter++;
-  }while( (return_value != 0x1AA) && (counter < 64) );
- 
-  if (return_value == 0x1AA)
+  }while(counter < 32);  
+  if (response != R1_IN_IDLE_STATE)
   {
-    counter = 0;
-    do
-    {
-      /*4. issue a command to activate the initialization process*/
-      mmcSendCMD(CMD_55,0x00000000);
-      mmcReadResponse(5);
-      response = mmcGetR1Response();
-      mmcSendCMD(ACMD_41,0x40000000);
-      mmcReadResponse(5);      
-      response = mmcGetR1Response();   
-    }while( (response == R1_IN_IDLE_STATE) && (counter < 4) );
-    
-    if (response == R1_COMPLETE)
-    {    
-      /*5. read the OCR register*/
-      mmcSendCMD(CMD_58,0x00000000);
-      mmcReadResponse(6);
-      response = mmcGetR3orR7Response(&return_value);
-      if (mmcGetPowerUpStatus(return_value) == 1)
-      {
-        init_complete = 1;
-      }
-    }
+    goto error;
   }
-    
+  
+  /*3. inquire the host supply voltage*/
+  counter = 0;
+  do
+  {
+    mmcSendCMD(CMD_8,0x000001AA);
+    mmcReadResponse(6);
+    response = mmcGetR3orR7Response(&return_value);
+    counter++;
+  }while( (response != R1_IN_IDLE_STATE) && (counter < 8) );
+  if ( (response != R1_IN_IDLE_STATE) || (return_value != 0x01AA) )
+  {
+    goto error;
+  }      
+ 
+  counter = 0;
+  do
+  {
+    /*4. issue a command to activate the initialization process*/
+    mmcSendCMD(CMD_55,0x00000000);
+    mmcReadResponse(5);
+    response = mmcGetR1Response();
+    mmcSendCMD(ACMD_41,0x40000000);
+    mmcReadResponse(5);      
+    response = mmcGetR1Response();   
+  }while( (response != R1_COMPLETE) && (counter < 8) );
+  if (response != R1_COMPLETE)
+  {
+    goto error;
+  }
+  
+  /*5. read the OCR register*/
+  mmcSendCMD(CMD_58,0x00000000);
+  mmcReadResponse(6);
+  response = mmcGetR3orR7Response(&return_value);
+  if (mmcGetPowerUpStatus(return_value) == 1)
+  {
+    init_complete = 1;
+  }
+
+error:
+  
   return init_complete;
 }
 

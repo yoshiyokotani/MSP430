@@ -95,33 +95,36 @@ unsigned short mmcInterpretR1(const unsigned char response)
 {
   unsigned short R1_response = 0xFFFF;
 
-  switch (response)
+  if (response != R1_IN_IDLE_STATE)
   {
-    case 0x00:
-      R1_response = (unsigned short)R1_COMPLETE;
-      break;
-    case 0x01:
-      R1_response = (unsigned short)R1_IN_IDLE_STATE;
-      break;
-    case 0x02:
-      R1_response = (unsigned short)R1_ERASE_RESET;
-      break;
-     case 0x04:
-      R1_response = (unsigned short)R1_ILLEGAL_COMMAND;
-      break;
-    case 0x08:
-      R1_response = (unsigned short)R1_COM_CRC_ERROR;
-      break;
-    case 0x10:
-      R1_response = (unsigned short)R1_ERASE_SEQUENCE_ERROR;
-      break;
-    case 0x20:
-      R1_response = (unsigned short)R1_ADDRESS_ERROR;
-      break;
-    case 0x40:
-      R1_response = (unsigned short)R1_PARAMETER_ERROR;
-      break;
-  } 
+    switch (response & ~(0x01))
+    {
+      case 0x00:
+        R1_response = (unsigned short)R1_COMPLETE;
+        break;
+//      case 0x01:
+//        R1_response = (unsigned short)R1_IN_IDLE_STATE;
+//        break;
+      case 0x02:
+        R1_response = (unsigned short)R1_ERASE_RESET;
+        break;
+      case 0x04:
+        R1_response = (unsigned short)R1_ILLEGAL_COMMAND;
+        break;
+      case 0x08:
+        R1_response = (unsigned short)R1_COM_CRC_ERROR;
+        break;
+      case 0x10:
+        R1_response = (unsigned short)R1_ERASE_SEQUENCE_ERROR;
+        break;
+      case 0x20:
+        R1_response = (unsigned short)R1_ADDRESS_ERROR;
+        break;
+      case 0x40:
+        R1_response = (unsigned short)R1_PARAMETER_ERROR;
+        break;
+    }
+  }      
 
   return R1_response;
 }
