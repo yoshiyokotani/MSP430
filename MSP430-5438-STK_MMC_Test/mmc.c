@@ -214,7 +214,7 @@ char mmcInitialization(void)
     MMC_NSS_High;
     
     counter++;
-  }while(counter < 32);  
+  }while(counter < 16);
   if (response != R1_IN_IDLE_STATE)
   {
     goto error;
@@ -228,7 +228,7 @@ char mmcInitialization(void)
     mmcReadResponse(6);
     response = mmcGetR3orR7Response(&return_value);
     counter++;
-  }while( (response != R1_IN_IDLE_STATE) && (counter < 8) );
+  }while( (response != R1_IN_IDLE_STATE) && (counter < 4) );
   if ( (response != R1_IN_IDLE_STATE) || (return_value != 0x01AA) )
   {
     goto error;
@@ -244,7 +244,7 @@ char mmcInitialization(void)
     mmcSendCMD(ACMD_41,0x40000000);
     mmcReadResponse(5);      
     response = mmcGetR1Response();   
-  }while( (response != R1_COMPLETE) && (counter < 8) );
+  }while( (response != R1_COMPLETE) && (counter < 4) );
   if (response != R1_COMPLETE)
   {
     goto error;
