@@ -266,9 +266,8 @@ error:
 
 void mmcReadWriteBlockTest(void)
 {
-  unsigned char response = 0xFF;
+  unsigned short response = 0xFFFF;
   unsigned int i = 0;
-  unsigned long return_value = 0xFFFFFFFF;
   CSDRegister csdReg = {0};
   
   /*1. initialize the card*/
@@ -277,29 +276,17 @@ void mmcReadWriteBlockTest(void)
     return;
   }
   else
-  {
-    /*2. read the OCR register to check the card capacity and operational voltage*/
-    {    
-      //OCR
-      mmcSendCMD(CMD_58,0x00000000);
-      mmcReadResponse(6);
-      response = mmcGetR3orR7Response(&return_value);     
-      if (response == R1_COMPLETE)
-      {
-        unsigned char ccs = mmcGetCardCapacityStatus(return_value);
-        unsigned short voltage_range = mmcGetOperationVoltageRange(return_value);   /*0x01FF: 2.7-3.6V*/
-      }
-    }
-    
-    /*3. read the CID register*/
-    mmcSendCMD(CMD_10,0x00000000);
-    mmcReadResponse(2);
-    response = mmcGetR1Response();
-  
-    /*4. read the CSD register*/
-    mmcSendCMD(CMD_9,0x00000000);
-    response = mmcReadCSDRegister(&csdReg);
-    
+  { 
+    i = 0;
+    do
+    {
+      /*2. read the CSD register*/
+      mmcSendCMD(CMD_9,0x00000000);
+      mmcReadResponse(24);
+      response = mmcReadCSDRegister(&csdReg);
+      i++;
+    }while( (i < 5) && (response != R1_COMPLETE) );
+
     /*5. write a block of data into an MMC*/
     for (i = 0; i < 512; i++)
     {

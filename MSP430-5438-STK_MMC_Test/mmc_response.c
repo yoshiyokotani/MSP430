@@ -276,10 +276,7 @@ unsigned short mmcGetOperationVoltageRange(unsigned long response_data)
 unsigned short mmcReadCSDRegister(CSDRegister *csdReg)
 {
   unsigned int i = 0;
-  unsigned short R1_response = 0xFFFF;
-  
-  //collect the response in a RAM first
-  mmcReadResponse(20);
+  unsigned short R1_response = 0xFFFF; 
   
   //find the first response byte in the buffer
   while ( (i < RESPONSE_BUFFER_LENGTH) && ((mmc_response_buffer[i++] >> 7) == 1) );
