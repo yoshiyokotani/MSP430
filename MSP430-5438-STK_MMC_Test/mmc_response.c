@@ -87,7 +87,7 @@ void mmcWriteBuffer(const unsigned int numBytes)
   
   while(i < numBytes)
   {
-    mmc_read_write_buffer[i++]= mmcWriteReadByte(0xFF);
+    mmcWriteReadByte(mmc_read_write_buffer[i++]);
   }
 }
 
