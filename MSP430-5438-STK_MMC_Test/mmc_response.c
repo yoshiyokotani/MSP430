@@ -95,7 +95,7 @@ unsigned short mmcInterpretR1(const unsigned char response)
 {
   unsigned short R1_response = 0xFFFF;
 
-  switch (response)
+  switch(response)
   {
     case 0x00:
       R1_response = (unsigned short)R1_COMPLETE;
@@ -129,16 +129,16 @@ unsigned short mmcInterpretR1(const unsigned char response)
       break;
     }      
   }
-  
+
   return R1_response;
 }
 
-unsigned short mmcGetR1Response(void)
+unsigned short mmcGetR1Response(const int searchLength)
 {
   unsigned int i = 0;
   
   //find the first response byte in the buffer
-  while ( (i < RESPONSE_BUFFER_LENGTH) && ((mmc_response_buffer[i++] >> 7) == 1) );
+  while ( (i < searchLength) && ((mmc_response_buffer[i++] >> 7) == 1) );
    
   return mmcInterpretR1(mmc_response_buffer[i-1]);
 }
@@ -203,27 +203,31 @@ unsigned short mmcGetR2Response(void)
   return (mmcInterpretR1(mmc_response_buffer[i-1]) | R2_response);
 }
 
-unsigned char mmcGetDataResponseToken(void)
+unsigned char mmcGetDataResponseToken(unsigned char *isBusy)
 {
   unsigned int i = 0;
-  unsigned char data_response_token = 0xFF;
+  unsigned char temp, data_response_token = 0xFF;
+  
+  *isBusy = 0;
   
   /*data response token*/
-  while( (i < RESPONSE_BUFFER_LENGTH) && ((mmc_response_buffer[i++] & 0x11) != 0x01) );
+  do{
+    temp = mmc_response_buffer[i++] & 0x1F;
+    if ( (temp == 0x05) || (temp == 0x0B) || (temp == 0x0D) )
+    {
+      break;
+    }
+  }while(i < RESPONSE_BUFFER_LENGTH);
   if (i < RESPONSE_BUFFER_LENGTH)
   {
-    data_response_token = (mmc_response_buffer[i-1] & 0x0E) >> 1;
-  }
-  else
-  {
-    i = 0;
+    data_response_token = (unsigned short)(temp >> 1);
   }
   
   /*busy signal*/
   while( (i < RESPONSE_BUFFER_LENGTH) && (mmc_response_buffer[i++] == 0) );
   if (mmc_response_buffer[i-1] == 0)
   {
-    data_response_token = R1_BUSY;
+    *isBusy = 1;
   }
   
   return data_response_token;  
@@ -276,8 +280,8 @@ unsigned short mmcGetOperationVoltageRange(unsigned long response_data)
 unsigned short mmcReadCSDRegister(CSDRegister *csdReg)
 {
   unsigned int i = 0;
-  unsigned short R1_response = 0xFFFF; 
-  
+  unsigned short R1_response = 0xFFFF;
+
   //find the first response byte in the buffer
   while ( (i < RESPONSE_BUFFER_LENGTH) && ((mmc_response_buffer[i++] >> 7) == 1) );
 
@@ -304,17 +308,17 @@ unsigned short mmcReadCSDRegister(CSDRegister *csdReg)
     }
     else /*csd_version == 2.0*/
     {
-/*      unsigned long c_size                = ((mmc_response_buffer[i+1] << 16)        |
-                                             (mmc_response_buffer[i+2] <<  8)        |
-                                              mmc_response_buffer[i+3]);*/
-      unsigned long c_size = *((unsigned long*)(&mmc_response_buffer[i+3]));
-      csdReg->NumBlocks                   = c_size  + 1; 
+      unsigned long c_size = (unsigned long)(mmc_response_buffer[i+1]) << 8;
+      c_size |= (unsigned long)(mmc_response_buffer[i+2]);
+      c_size <<= 8;
+      c_size |= (unsigned long)(mmc_response_buffer[i+3]);
+      csdReg->NumBlocks                   = (c_size  + 1)*1000; 
     }
     i += 4;
     csdReg->EraseSingleBlockEnable        = (unsigned char)((mmc_response_buffer[i] & 0x40) >> 6);
-    csdReg->ErasableSectorSize            = (unsigned short)(((mmc_response_buffer[i] & 0xEF) << 1) | (mmc_response_buffer[i+1] >> 7));
+    csdReg->ErasableBlocks                = (unsigned short)(((mmc_response_buffer[i] & 0x3F) << 1) | (mmc_response_buffer[i+1] >> 7));
     i += 2;
-    csdReg->WriteBlockLength              = (unsigned short)( ((mmc_response_buffer[i] & 0x03) << 2) | ((mmc_response_buffer[i+1] &0xC0) >> 6) );
+    csdReg->WriteBlockLength              = 1 << ((unsigned short)( ((mmc_response_buffer[i] & 0x03) << 2) | ((mmc_response_buffer[i+1] &0xC0) >> 6) ));
     i += 2;
     csdReg->TemporaryWriteProtection      = (unsigned char)((mmc_response_buffer[i] & 0x10) >> 4); 
   }

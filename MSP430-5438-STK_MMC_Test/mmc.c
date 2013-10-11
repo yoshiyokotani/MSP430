@@ -1,4 +1,5 @@
 #include "io430.h"
+#include "math.h"
 #include "mmc.h"
 #include "mmc_response.h"
 #include "crc.h"
@@ -8,21 +9,31 @@ unsigned long mmcReadBlocks(CSDRegister csdReg, unsigned long address, unsigned 
   unsigned char start_token = 0xFF;
   unsigned short r1_response = 0xFFFF, crc16 = 0xFFFF;
   unsigned long numBytesRead = 0;
-  unsigned long numBlocks = 1 + numBytes/csdReg.ReadBlockLength;
+  unsigned long numBlocks = (unsigned long)ceil((float)numBytes/csdReg.ReadBlockLength);
   
   if (1 == numBlocks)   /*single block read*/
-  {
+  {   
+    int i = 0;
+    
+    for (i = 0; i < 32; i++)
+    {
     /*issue CMD_17 (READ_SINGLE_BLOCK)*/
     mmcSendCMD(CMD_17, address);
     
     /*read the corresponding R1 response*/
     mmcReadResponse(2);
-  
+
+    if (mmcGetR1Response(2) == R1_COMPLETE)
+    { 
+      break;
+    }
+    }
+    
     /*read a block of data including CRC16*/
     mmcReadBuffer(1+csdReg.ReadBlockLength+2);   
-
+    
     /*interpret the responses*/
-    r1_response = mmcGetR1Response();
+    //r1_response = mmcGetR1Response();
     start_token = mmcGetStartBlockToken();
     crc16 = CalcCRC16(mmc_read_write_buffer, csdReg.ReadBlockLength);
     
@@ -43,7 +54,7 @@ unsigned long mmcReadBlocks(CSDRegister csdReg, unsigned long address, unsigned 
     /*read the corresponding response token*/
     mmcReadResponse(2);
   
-    if (mmcGetR1Response() == R1_COMPLETE)
+    if (mmcGetR1Response(2) == R1_COMPLETE)
     {  
       for (b = 0; b < numBlocks; b++)
       {
@@ -88,10 +99,10 @@ unsigned long mmcReadBlocks(CSDRegister csdReg, unsigned long address, unsigned 
 
 unsigned long mmcWriteBlocks(CSDRegister csdReg, unsigned long address, unsigned long numBytes)
 {
-  unsigned char start_token, data_response_token;
+  unsigned char start_token, data_response_token, temp, isBusy;
   unsigned short crc16;
   unsigned long numBytesWritten = 0;
-  unsigned long numBlocks = 1 + numBytes/csdReg.WriteBlockLength;
+  unsigned long numBlocks = (unsigned long)ceil((float)numBytes/csdReg.WriteBlockLength);
   
   if (1 == numBlocks)   /*single block write*/
   {
@@ -106,7 +117,7 @@ unsigned long mmcWriteBlocks(CSDRegister csdReg, unsigned long address, unsigned
     mmcReadResponse(2);
      
     /*interpret the response, and if it's a right one, then, send a data block*/
-    if (mmcGetR1Response() == R1_COMPLETE)
+    if (mmcGetR1Response(2) == R1_COMPLETE)
     {
       /*send a data block to write*/
       mmcWriteReadByte(start_token);
@@ -115,11 +126,16 @@ unsigned long mmcWriteBlocks(CSDRegister csdReg, unsigned long address, unsigned
       mmcWriteReadByte((unsigned char)(crc16 & 0x00FF));
       
       /*wait until the data response token is completely transmitted*/
+      isBusy = 0;
       do
       {
         mmcReadResponse(RESPONSE_BUFFER_LENGTH);
-        data_response_token = mmcGetDataResponseToken();
-      }while( (data_response_token == 0xFF) || (data_response_token == R1_BUSY) );
+        temp = mmcGetDataResponseToken(&isBusy);
+        if (temp != 0xFF)
+        {
+          data_response_token = temp;
+        }
+      }while(isBusy == 1);
       
       if (data_response_token == 0x02)  /*Data accepted*/
       {
@@ -141,7 +157,7 @@ unsigned long mmcWriteBlocks(CSDRegister csdReg, unsigned long address, unsigned
     /*read the corresponding R1 response*/
     mmcReadResponse(2);
     
-    if (mmcGetR1Response() == R1_COMPLETE)
+    if (mmcGetR1Response(2) == R1_COMPLETE)
     {
       for (b = 0; b < numBlocks; b++)
       {
@@ -152,15 +168,20 @@ unsigned long mmcWriteBlocks(CSDRegister csdReg, unsigned long address, unsigned
         mmcWriteReadByte((unsigned char)(crc16 & 0xFF));
 
         /*wait until the data response token is completely transmitted*/
+        isBusy = 0;
         do
         {
           mmcReadResponse(RESPONSE_BUFFER_LENGTH);
-          data_response_token = mmcGetDataResponseToken();
-        }while( (data_response_token == 0xFF) || (data_response_token == R1_BUSY) );        
+          temp = mmcGetDataResponseToken(&isBusy);
+          if (temp != 0xFF)
+          {
+            data_response_token = temp;
+          }
+        }while(isBusy == 1);        
    
         if (data_response_token == 0x02)  /*Data accepted*/
         {
-          numBytesWritten = csdReg.WriteBlockLength;
+          numBytesWritten += csdReg.WriteBlockLength;
         }
         else  /*Data rejected -- either CRC error or Write error*/
         {
@@ -168,11 +189,16 @@ unsigned long mmcWriteBlocks(CSDRegister csdReg, unsigned long address, unsigned
           mmcWriteReadByte(0xFD);
           
           /*wait until the tail of busy signal is found*/
+          isBusy = 0;
           do
           {
             mmcReadResponse(RESPONSE_BUFFER_LENGTH);
-            data_response_token = mmcGetDataResponseToken();
-          }while(data_response_token == R1_BUSY);          
+            temp = mmcGetDataResponseToken(&isBusy);
+            if (temp != 0xFF)
+            {
+              data_response_token = temp;
+            }
+          }while(isBusy == 1);          
           
           /*break this block transmission loop*/
           break;
@@ -204,7 +230,7 @@ char mmcInitialization(void)
     /*2.2. send a reset (CMD_0) signal*/
     mmcSendCMD(CMD_0,0x00000000);
     mmcReadResponse(2);
-    response = mmcGetR1Response();
+    response = mmcGetR1Response(2);
     if (response == R1_IN_IDLE_STATE)
     {
       break;
@@ -240,10 +266,10 @@ char mmcInitialization(void)
     /*4. issue a command to activate the initialization process*/
     mmcSendCMD(CMD_55,0x00000000);
     mmcReadResponse(5);
-    response = mmcGetR1Response();
+    response = mmcGetR1Response(5);
     mmcSendCMD(ACMD_41,0x40000000);
     mmcReadResponse(5);      
-    response = mmcGetR1Response();   
+    response = mmcGetR1Response(5);   
   }while( (response != R1_COMPLETE) && (counter < 4) );
   if (response != R1_COMPLETE)
   {
@@ -281,7 +307,7 @@ void mmcReadWriteBlockTest(void)
     do
     {
       /*2. read the CSD register*/
-      mmcSendCMD(CMD_9,0x00000000);
+      mmcSendCMD(CMD_9,0x00000001);
       mmcReadResponse(24);
       response = mmcReadCSDRegister(&csdReg);
       i++;
@@ -292,7 +318,7 @@ void mmcReadWriteBlockTest(void)
     {
       mmc_read_write_buffer[i] = i;
     }  
-    mmcWriteBlocks(csdReg, 0x00000000, csdReg.WriteBlockLength);
+    mmcWriteBlocks(csdReg, 0x00000001, 2*csdReg.WriteBlockLength);
     
     /*6. clear mmc_read_writer_buffer*/
     for (i = 0; i < 512; i++)
@@ -301,7 +327,7 @@ void mmcReadWriteBlockTest(void)
     }
     
     /*7. read a block of data from an MMC*/
-    mmcReadBlocks(csdReg, 0x00000000, csdReg.ReadBlockLength);
+    mmcReadBlocks(csdReg, 0x00000001, 2*csdReg.ReadBlockLength);
   }
   
   return;
