@@ -7,41 +7,32 @@
 unsigned long mmcReadBlocks(CSDRegister csdReg, unsigned long address, unsigned long numBytes)
 {
   unsigned char start_token = 0xFF;
-  unsigned short r1_response = 0xFFFF, crc16 = 0xFFFF;
+  unsigned short crc16 = 0xFFFF;
   unsigned long numBytesRead = 0;
   unsigned long numBlocks = (unsigned long)ceil((float)numBytes/csdReg.ReadBlockLength);
   
   if (1 == numBlocks)   /*single block read*/
   {   
-    int i = 0;
-    
-    for (i = 0; i < 32; i++)
-    {
     /*issue CMD_17 (READ_SINGLE_BLOCK)*/
     mmcSendCMD(CMD_17, address);
     
     /*read the corresponding R1 response*/
-    mmcReadResponse(2);
-
-    if (mmcGetR1Response(2) == R1_COMPLETE)
-    { 
-      break;
-    }
-    }
-    
-    /*read a block of data including CRC16*/
-    mmcReadBuffer(1+csdReg.ReadBlockLength+2);   
-    
-    /*interpret the responses*/
-    //r1_response = mmcGetR1Response();
-    start_token = mmcGetStartBlockToken();
-    crc16 = CalcCRC16(mmc_read_write_buffer, csdReg.ReadBlockLength);
-    
-    if ( (r1_response == R1_COMPLETE) &&        /*if not, then, R1 error*/
-         (start_token == TOKEN_START_OK)  &&    /*if not, then, data error token was received*/
-         (crc16 == 0x0000) )                    /*if not, then, crc error was detected*/
+    mmcReadResponse(11);
+     
+    if (mmcGetR1Response(11) == R1_COMPLETE)
     {
-      numBytesRead = numBytes;
+      /*read a block of data including CRC16*/
+      mmcReadBuffer(1+csdReg.ReadBlockLength+2);   
+    
+      /*interpret the responses*/
+      start_token = mmcGetStartBlockToken();
+      crc16 = CalcCRC16(mmc_read_write_buffer+1, csdReg.ReadBlockLength+2);
+    
+      if ( (start_token == TOKEN_START_OK)  &&    /*if not, then, data error token was received*/
+           (crc16 == 0x0000) )                    /*if not, then, crc error was detected*/
+      {
+        numBytesRead = numBytes;
+      }
     }
   }
   else  /*multiple block read*/
@@ -52,9 +43,9 @@ unsigned long mmcReadBlocks(CSDRegister csdReg, unsigned long address, unsigned 
     mmcSendCMD(CMD_18, address);
     
     /*read the corresponding response token*/
-    mmcReadResponse(2);
+    mmcReadResponse(11);
   
-    if (mmcGetR1Response(2) == R1_COMPLETE)
+    if (mmcGetR1Response(11) == R1_COMPLETE)
     {  
       for (b = 0; b < numBlocks; b++)
       {
@@ -63,7 +54,7 @@ unsigned long mmcReadBlocks(CSDRegister csdReg, unsigned long address, unsigned 
         
         /*check the start block token and crc*/
         start_token = mmcGetStartBlockToken();
-        crc16 = CalcCRC16(mmc_read_write_buffer, csdReg.ReadBlockLength);
+        crc16 = CalcCRC16(mmc_read_write_buffer+1, csdReg.ReadBlockLength+2);
         
         if ( (start_token == TOKEN_START_OK) && (crc16 == 0x0000) )
         {
@@ -318,7 +309,7 @@ void mmcReadWriteBlockTest(void)
     {
       mmc_read_write_buffer[i] = i;
     }  
-    mmcWriteBlocks(csdReg, 0x00000001, 2*csdReg.WriteBlockLength);
+    mmcWriteBlocks(csdReg, 0x00000002, 2*csdReg.WriteBlockLength);
     
     /*6. clear mmc_read_writer_buffer*/
     for (i = 0; i < 512; i++)
@@ -327,7 +318,7 @@ void mmcReadWriteBlockTest(void)
     }
     
     /*7. read a block of data from an MMC*/
-    mmcReadBlocks(csdReg, 0x00000001, 2*csdReg.ReadBlockLength);
+    mmcReadBlocks(csdReg, 0x00000002, csdReg.ReadBlockLength);
   }
   
   return;

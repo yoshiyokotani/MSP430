@@ -29,10 +29,10 @@ unsigned short CalcCRC16(const unsigned char *cmd_seq, const unsigned int length
 {
   unsigned int i, j;
   unsigned long g;
-  unsigned int temp;
+  unsigned long temp;
   unsigned long mask;
    
-  temp = (unsigned int)cmd_seq[0] << 8;
+  temp = (unsigned long)cmd_seq[0] << 8;
   temp |= cmd_seq[1];
   temp <<= 8;
   temp |= cmd_seq[2];
@@ -42,7 +42,7 @@ unsigned short CalcCRC16(const unsigned char *cmd_seq, const unsigned int length
     g    = 0x88108000;         /*(x^16+x^12+x^5+1)*x^15*/
     mask = 0x80000000;
     temp = (temp << 8) | cmd_seq[i+3];
-    for (j = 0; j < 8; j++)
+    for (j = 0; j < 15; j++)
     {
       if (temp & mask)
       {
