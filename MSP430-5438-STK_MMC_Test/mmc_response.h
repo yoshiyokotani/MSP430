@@ -46,7 +46,7 @@
 #define TOKEN_START_OK                  0x0000
 #define TOKEN_START_NOK                 0x0001
 
-extern unsigned char mmc_read_write_buffer[515];
+extern unsigned char mmc_read_write_buffer[];
 
 typedef struct CSDRegister 
 {
@@ -70,7 +70,7 @@ unsigned short mmcGetR1Response(const int searchLength);
 unsigned short mmcGetR1bResponse(void);
 unsigned short mmcGetR2Response(void);
 unsigned char mmcGetDataResponseToken(unsigned char *isBusy);
-unsigned char mmcGetStartBlockToken(void);
+unsigned char mmcGetStartBlockToken(int *start_index);
 unsigned short mmcGetR3orR7Response(unsigned long *ret_data);
 unsigned char mmcGetCardCapacityStatus(unsigned long response_data);
 unsigned char mmcGetPowerUpStatus(unsigned long response_data);

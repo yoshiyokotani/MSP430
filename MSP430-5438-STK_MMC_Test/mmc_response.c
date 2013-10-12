@@ -3,7 +3,7 @@
 #include "crc.h"
 
 unsigned char mmc_response_buffer[RESPONSE_BUFFER_LENGTH] = {0};
-unsigned char mmc_read_write_buffer[515];
+unsigned char mmc_read_write_buffer[520];
 
 void mmcInitBuffers(void)
 {
@@ -135,12 +135,24 @@ unsigned short mmcInterpretR1(const unsigned char response)
 
 unsigned short mmcGetR1Response(const int searchLength)
 {
-  unsigned int i = 0;
+  unsigned int i = 0, j = 0;
   
   //find the first response byte in the buffer
   while ( (i < searchLength) && ((mmc_response_buffer[i++] >> 7) == 1) );
    
-  return mmcInterpretR1(mmc_response_buffer[i-1]);
+  while(mmc_response_buffer[i++] == R1_COMPLETE)
+  {
+    j++;
+  }
+    
+  if (j > 0)
+  {
+    return R1_BUSY;     //in case of reading a sequence of busy signals would be recevied while an R1 signal is expected.
+  }
+  else
+  {
+    return mmcInterpretR1(mmc_response_buffer[i-2]);
+  }
 }
 
 unsigned short mmcGetR1bResponse(void)
@@ -233,13 +245,18 @@ unsigned char mmcGetDataResponseToken(unsigned char *isBusy)
   return data_response_token;  
 }
 
-unsigned char mmcGetStartBlockToken(void)
+unsigned char mmcGetStartBlockToken(int *start_index)
 {
-  unsigned char TokenResponse = TOKEN_START_OK;
+  unsigned char TokenResponse = TOKEN_START_NOK;
+  unsigned int i = 0;
   
-  if (mmc_read_write_buffer[0] & 0x01 == 0x01)
+  *start_index = -1;
+
+  while (mmc_read_write_buffer[i++] == 0xFF);
+  if (mmc_read_write_buffer[i-1] == 0xFE)
   {
-    TokenResponse = TOKEN_START_NOK;
+    TokenResponse = TOKEN_START_OK;
+    *start_index = i;
   }
   
   return TokenResponse;  
