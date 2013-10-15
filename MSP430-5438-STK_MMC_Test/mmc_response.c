@@ -145,7 +145,7 @@ unsigned short mmcGetR1Response(const int searchLength)
     j++;
   }
     
-  if (j > 0)
+  if (j > 1)
   {
     return R1_BUSY;     //in case of reading a sequence of busy signals would be recevied while an R1 signal is expected.
   }

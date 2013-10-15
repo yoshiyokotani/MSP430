@@ -102,7 +102,7 @@ unsigned long mmcReadBlocks(CSDRegister csdReg, unsigned long address, unsigned 
     
               /*find an R1 response and the following busy signal*/
               r1b_response = mmcGetR1bResponse();     
-            }while( (r1b_response == 0xFFFF) || (r1b_response == R1_BUSY) );
+            }while(r1b_response == R1_BUSY);
           }
           
           /*break the loop*/
