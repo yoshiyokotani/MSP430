@@ -57,7 +57,7 @@ unsigned long mmcReadBlocks(CSDRegister csdReg, unsigned long address, unsigned 
       /*issue CMD_18 (READ_SINGLE_BLOCK)*/
       mmcSendCMD(CMD_18, address);
     
-      /*read the corresponding response token*/
+      /*read the corresponding response*/
       mmcReadResponse(5);
   
       r1_response = mmcGetR1Response(5);
@@ -228,6 +228,50 @@ unsigned long mmcWriteBlocks(CSDRegister csdReg, unsigned long address, unsigned
   return numBytesWritten;
 }
 
+unsigned char mmcEraseSectors(unsigned long startAddr, unsigned long endAddr)
+{
+  unsigned char isEraseComplete = 0;
+  unsigned short r1_response = 0xFFFF;
+  
+  /*set the start address to erase*/
+  mmcSendCMD(CMD_32, startAddr);
+  /*read the corresponding response*/
+  mmcReadResponse(2);
+  r1_response = mmcGetR1Response(2);
+  if (r1_response != R1_COMPLETE)
+  {
+    goto error;
+  }
+  
+  /*set the end address to erase*/
+  mmcSendCMD(CMD_33, endAddr);
+  /*read the corresponding response*/
+  mmcReadResponse(2);
+  r1_response = mmcGetR1Response(2);
+  if (r1_response != R1_COMPLETE)
+  {
+    goto error;
+  }
+  
+  /*issue an erase command*/
+  mmcSendCMD(CMD_38, 0x00000000);
+  /*wait for R1b and its tail*/
+  {
+    unsigned short r1b_response = 0xFFFF;          
+    do
+    {
+      mmcReadResponse(RESPONSE_BUFFER_LENGTH);
+      /*find an R1 response and the following busy signal*/
+      r1b_response = mmcGetR1bResponse();     
+    }while(r1b_response == R1_BUSY);
+  }
+  isEraseComplete = 1;
+
+error:
+  
+  return isEraseComplete;
+}
+
 char mmcInitialization(void)
 {
   unsigned char init_complete = 0;
@@ -311,42 +355,88 @@ error:
 void mmcReadWriteBlockTest(void)
 {
   unsigned short response = 0xFFFF;
-  unsigned int i = 0;
+  unsigned int i = 0, j = 0;
+  const unsigned long sectorAddr = 0x00000002;
+  unsigned long numBytesToWrite = 0;
   CSDRegister csdReg = {0};
   
   /*1. initialize the card*/
   if(mmcInitialization() == 0)
   { 
-    return;
+    goto error;
   }
-  else
-  { 
-    i = 0;
-    do
+ 
+  i = 0;
+  do
+  {
+    /*2. read the CSD register*/
+    mmcSendCMD(CMD_9,0x00000001);
+    mmcReadResponse(24);
+    response = mmcReadCSDRegister(&csdReg);
+    i++;
+  }while( (i < 5) && (response != R1_COMPLETE) );
+  if (response != R1_COMPLETE)
+  {
+    goto error;
+  }
+  
+  /*3. erase first and second sectors*/
+  if (0 == mmcEraseSectors(sectorAddr, sectorAddr+1))
+  {
+    goto error;
+  }
+  
+  /*4. check the erased sectors*/
+  for (i = 0; i < 2; i++)
+  {
+    if (csdReg.ReadBlockLength != mmcReadBlocks(csdReg, sectorAddr+i, csdReg.ReadBlockLength))
     {
-      /*2. read the CSD register*/
-      mmcSendCMD(CMD_9,0x00000001);
-      mmcReadResponse(24);
-      response = mmcReadCSDRegister(&csdReg);
-      i++;
-    }while( (i < 5) && (response != R1_COMPLETE) );
-
-    /*5. write a block of data into an MMC*/
-    for (i = 0; i < 512; i++)
-    {
-      mmc_read_write_buffer[i] = i;
+      goto error;
     }  
-    mmcWriteBlocks(csdReg, 0x00000002, 2*csdReg.WriteBlockLength);
-    
-    /*6. clear mmc_read_writer_buffer*/
-    for (i = 0; i < 512; i++)
+    for (j = 0; j < csdReg.ReadBlockLength; j++)
     {
-      mmc_read_write_buffer[i] = 0;
+      if (mmc_read_write_buffer[j] != 0xFF)
+      {
+        goto error;
+      }
     }
+  }  
     
-    /*7. read a block of data from an MMC*/
-    mmcReadBlocks(csdReg, 0x00000002, 2*csdReg.ReadBlockLength);
+  /*4. write a block of data into an MMC*/
+  for (i = 0; i < 512; i++)
+  {
+    mmc_read_write_buffer[i] = i;
   }
+  numBytesToWrite = 2 * csdReg.WriteBlockLength;
+  if ((unsigned long)(ceil(numBytesToWrite/csdReg.WriteBlockLength)) 
+      != mmcWriteBlocks(csdReg, sectorAddr, numBytesToWrite))
+  {
+    goto error;
+  }
+    
+  /*5. clear mmc_read_writer_buffer*/
+  for (i = 0; i < 512; i++)
+  {
+    mmc_read_write_buffer[i] = 0;
+  }
+    
+  /*6. read a block of data from an MMC*/
+  for (i = 0; i < 2; i++)
+  {
+    if (csdReg.ReadBlockLength != mmcReadBlocks(csdReg, sectorAddr+i, csdReg.ReadBlockLength))
+    {
+      goto error;
+    }  
+    for (j = 0; j < csdReg.ReadBlockLength; j++)
+    {
+      if (mmc_read_write_buffer[j] != j)
+      {
+        goto error;
+      }
+    }
+  } 
+  
+error:  
   
   return;
 }
