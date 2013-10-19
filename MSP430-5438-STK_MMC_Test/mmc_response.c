@@ -138,7 +138,7 @@ unsigned short mmcGetR1Response(const int searchLength)
   unsigned int i = 0, j = 0;
   
   //find the first response byte in the buffer
-  while ( (i < searchLength) && ((mmc_response_buffer[i++] >> 7) == 1) );
+  while ( (i < searchLength) && (mmc_response_buffer[i++] & 0x7F != 0x00) );
   
   while( (i < searchLength) && (mmc_response_buffer[i] == R1_COMPLETE) )
   {
@@ -146,9 +146,9 @@ unsigned short mmcGetR1Response(const int searchLength)
     j++;
   }
     
-  if (j >= 1)
+  if (j == searchLength - 1)
   {
-    return R1_BUSY;     //in case of reading a sequence of busy signals would be recevied while an R1 signal is expected.
+    return R1_ALL_ZEROS;
   }
   else
   {

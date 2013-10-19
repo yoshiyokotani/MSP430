@@ -29,6 +29,7 @@
 #define R1_ADDRESS_ERROR                0x0020
 #define R1_PARAMETER_ERROR              0x0040
 #define R1_BUSY                         0x0080
+#define R1_ALL_ZEROS                    0x0100
 
 #define R2_CARD_IS_LOCKED               0x0080
 #define R2_WP_ERASE_SKIP                0x0100

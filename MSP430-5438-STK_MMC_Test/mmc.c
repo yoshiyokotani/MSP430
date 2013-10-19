@@ -19,10 +19,10 @@ unsigned long mmcReadBlocks(CSDRegister csdReg, unsigned long address, unsigned 
       /*issue CMD_17 (READ_SINGLE_BLOCK)*/
       mmcSendCMD(CMD_17, address);
     
-      /*read the corresponding R1 response*/
-      mmcReadResponse(2);
+      /*read the corresponding R1 response (note: need to ignore preceding zeros)*/
+      mmcReadResponse(5);
       
-      r1_response = mmcGetR1Response(2);
+      r1_response = mmcGetR1Response(5);
       
       i++;
     }while ( (i < 5) && (r1_response != R1_COMPLETE) );
@@ -57,7 +57,7 @@ unsigned long mmcReadBlocks(CSDRegister csdReg, unsigned long address, unsigned 
       /*issue CMD_18 (READ_SINGLE_BLOCK)*/
       mmcSendCMD(CMD_18, address);
     
-      /*read the corresponding response*/
+      /*read the corresponding response (note: need to ignore preceding zeros)*/
       mmcReadResponse(5);
   
       r1_response = mmcGetR1Response(5);
@@ -230,6 +230,7 @@ unsigned long mmcWriteBlocks(CSDRegister csdReg, unsigned long address, unsigned
 
 unsigned char mmcEraseBlocks(unsigned long startAddr, unsigned long endAddr)
 {
+  unsigned char isR1BReceived = 0;
   unsigned short r1_response = 0xFFFF;
   unsigned short r1b_response = 0xFFFF;  
   
@@ -263,8 +264,12 @@ unsigned char mmcEraseBlocks(unsigned long startAddr, unsigned long endAddr)
     mmcReadResponse(RESPONSE_BUFFER_LENGTH);
     
     /*find an R1 response and the following busy signal*/
-    r1b_response = mmcGetR1bResponse();     
-  }while( (r1b_response == 0xFFFF) || (r1b_response == R1_BUSY) );
+    r1b_response = mmcGetR1bResponse();   
+    if (r1b_response == R1_BUSY)
+    {
+      isR1BReceived = 1;
+    }
+  }while( (isR1BReceived == 0) || (r1b_response == R1_BUSY) );
   
   return 1;
 }
@@ -356,6 +361,7 @@ void mmcReadWriteBlockTest(void)
   const unsigned long sectorAddr = 0x00000002;
   unsigned long numBytesToWrite = 0;
   CSDRegister csdReg = {0};
+  unsigned char *p = 0;
   
   /*1. initialize the card*/
   if(mmcInitialization() == 0)
@@ -389,15 +395,18 @@ void mmcReadWriteBlockTest(void)
     if (csdReg.ReadBlockLength != mmcReadBlocks(csdReg, sectorAddr+i, csdReg.ReadBlockLength))
     {
       goto error;
-    }  
+    }
+    j = 0;
+    while(mmc_read_write_buffer[j++] != 0xFE);
+    p = &mmc_read_write_buffer[j];
     for (j = 0; j < csdReg.ReadBlockLength; j++)
     {
-      if (mmc_read_write_buffer[j] != 0xFF)
+      if (*p++ != 0x00)
       {
         goto error;
       }
     }
-  }  
+  }
     
   /*4. write a block of data into an MMC*/
   for (i = 0; i < 512; i++)
@@ -405,7 +414,7 @@ void mmcReadWriteBlockTest(void)
     mmc_read_write_buffer[i] = i;
   }
   numBytesToWrite = 2 * csdReg.WriteBlockLength;
-  if ((unsigned long)(ceil(numBytesToWrite/csdReg.WriteBlockLength)) 
+  if ((unsigned long)(ceil(numBytesToWrite/csdReg.WriteBlockLength))*csdReg.WriteBlockLength 
       != mmcWriteBlocks(csdReg, sectorAddr, numBytesToWrite))
   {
     goto error;
@@ -424,9 +433,12 @@ void mmcReadWriteBlockTest(void)
     {
       goto error;
     }  
+    j = 0;
+    while(mmc_read_write_buffer[j++] != 0xFE);
+    p = &mmc_read_write_buffer[j];
     for (j = 0; j < csdReg.ReadBlockLength; j++)
     {
-      if (mmc_read_write_buffer[j] != j)
+      if (*p++ != j % 256)
       {
         goto error;
       }
