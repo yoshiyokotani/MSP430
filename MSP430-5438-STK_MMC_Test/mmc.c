@@ -228,48 +228,45 @@ unsigned long mmcWriteBlocks(CSDRegister csdReg, unsigned long address, unsigned
   return numBytesWritten;
 }
 
-unsigned char mmcEraseSectors(unsigned long startAddr, unsigned long endAddr)
+unsigned char mmcEraseBlocks(unsigned long startAddr, unsigned long endAddr)
 {
-  unsigned char isEraseComplete = 0;
   unsigned short r1_response = 0xFFFF;
+  unsigned short r1b_response = 0xFFFF;  
   
-  /*set the start address to erase*/
+  /*issue CMD_32*/
   mmcSendCMD(CMD_32, startAddr);
-  /*read the corresponding response*/
   mmcReadResponse(2);
   r1_response = mmcGetR1Response(2);
   if (r1_response != R1_COMPLETE)
   {
-    goto error;
+    return 0;
   }
   
-  /*set the end address to erase*/
-  mmcSendCMD(CMD_33, endAddr);
-  /*read the corresponding response*/
-  mmcReadResponse(2);
-  r1_response = mmcGetR1Response(2);
-  if (r1_response != R1_COMPLETE)
+  /*issue CMD_33*/
+  while (1)
   {
-    goto error;
-  }
-  
-  /*issue an erase command*/
-  mmcSendCMD(CMD_38, 0x00000000);
-  /*wait for R1b and its tail*/
-  {
-    unsigned short r1b_response = 0xFFFF;          
-    do
+    mmcSendCMD(CMD_33, endAddr);
+    mmcReadResponse(2);
+    r1_response = mmcGetR1Response(2);
+    if (r1_response == R1_COMPLETE)
     {
-      mmcReadResponse(RESPONSE_BUFFER_LENGTH);
-      /*find an R1 response and the following busy signal*/
-      r1b_response = mmcGetR1bResponse();     
-    }while(r1b_response == R1_BUSY);
+      break;
+    }
+    //set a wait
+    mmcReadResponse(RESPONSE_BUFFER_LENGTH);  
   }
-  isEraseComplete = 1;
 
-error:
+  /*issue CMD_38, and wait for R1b and its tail*/
+  do
+  {             
+    mmcSendCMD(CMD_38, 0x00000000);
+    mmcReadResponse(RESPONSE_BUFFER_LENGTH);
+    
+    /*find an R1 response and the following busy signal*/
+    r1b_response = mmcGetR1bResponse();     
+  }while( (r1b_response == 0xFFFF) || (r1b_response == R1_BUSY) );
   
-  return isEraseComplete;
+  return 1;
 }
 
 char mmcInitialization(void)
@@ -381,7 +378,7 @@ void mmcReadWriteBlockTest(void)
   }
   
   /*3. erase first and second sectors*/
-  if (0 == mmcEraseSectors(sectorAddr, sectorAddr+1))
+  if (0 == mmcEraseBlocks(sectorAddr, sectorAddr+1))
   {
     goto error;
   }
