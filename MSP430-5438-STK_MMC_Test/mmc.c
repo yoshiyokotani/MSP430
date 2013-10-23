@@ -504,22 +504,22 @@ void mmcReadWriteBlockTest(void)
   }
   
   /*3. set a password*/
-  if (0 == mmcSetPassword())
+  if (0 == mmcSetClearPassword(1))
   {
     goto error;
   }
    
   /*4. lock the card with the password*/
-  /*if (0 == mmcLockUnlockCard())
+  if (0 == mmcLockUnlockCard())
   {
     goto error;
-  }*/
+  }
 
-  /*5. unlock the card with the password*/
-  /*if (0 == mmcLockUnlockCard())
+  /*5. unlock the card even after the power-off by clearing the password*/
+  if (0 == mmcSetClearPassword(0))
   {
     goto error;
-  }*/
+  }
     
   /*6. erase first and second sectors*/
   if (0 == mmcEraseBlocks(sectorAddr, sectorAddr+1))
