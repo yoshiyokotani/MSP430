@@ -235,12 +235,15 @@ unsigned char mmcEraseBlocks(unsigned long startAddr, unsigned long endAddr)
   unsigned short r1b_response = 0xFFFF;  
   
   /*issue CMD_32*/
-  mmcSendCMD(CMD_32, startAddr);
-  mmcReadResponse(2);
-  r1_response = mmcGetR1Response(2);
-  if (r1_response != R1_COMPLETE)
+  while (1)
   {
-    return 0;
+    mmcSendCMD(CMD_32, startAddr);
+    mmcReadResponse(2);
+    r1_response = mmcGetR1Response(2);
+    if (r1_response == R1_COMPLETE)
+    {
+      break;
+    }
   }
   
   /*issue CMD_33*/
@@ -272,6 +275,123 @@ unsigned char mmcEraseBlocks(unsigned long startAddr, unsigned long endAddr)
   }while( (isR1BReceived == 0) || (r1b_response == R1_BUSY) );
   
   return 1;
+}
+
+unsigned char mmcSetClearPassword(unsigned char isSetPswd)
+{
+  unsigned char isSetDone = 0;
+  unsigned short crc16;
+  unsigned int i = 0;
+  
+  /*clear the data buffer*/
+  for (i = 0; i < 520; i++)
+  {
+    mmc_read_write_buffer[i] = 0;
+  }
+  
+  /*set data in the buffer*/
+  if (isSetPswd == 1)   /*set a password*/
+  {
+    mmc_read_write_buffer[0] = 0x01;
+  }
+  else                  /*clear the password -> unlock the card even after the power-off*/
+  {
+    mmc_read_write_buffer[0] = 0x02;
+  }
+  mmc_read_write_buffer[1] = 0x06;
+  mmc_read_write_buffer[2] = 0x00;
+  mmc_read_write_buffer[3] = 0x01;
+  mmc_read_write_buffer[4] = 0x02;
+  mmc_read_write_buffer[5] = 0x03;
+  mmc_read_write_buffer[6] = 0x04;
+  mmc_read_write_buffer[7] = 0x05;  
+  crc16 = CalcCRC16(mmc_read_write_buffer,512);
+ 
+  mmcSendCMD(CMD_42, 0x00000000);
+  mmcReadResponse(2);
+  if (mmcGetR1Response(2) == R1_COMPLETE)
+  { 
+    unsigned char isBusy = 0;
+    unsigned char temp, data_response_token;
+    
+    mmcWriteReadByte(0xFE);
+    mmcWriteBuffer(512);
+    mmcWriteReadByte((unsigned char)(crc16 >> 8));
+    mmcWriteReadByte((unsigned char)(crc16 & 0x00FF));
+
+    /*wait until the data response token is completely transmitted*/
+    isBusy = 0;
+    do
+    {
+      mmcReadResponse(RESPONSE_BUFFER_LENGTH);
+      temp = mmcGetDataResponseToken(&isBusy);
+      if (temp != 0xFF)
+      {
+        data_response_token = temp;
+      }
+    }while(isBusy == 1);
+    if (data_response_token == 0x02)  /*Data accepted*/
+    {
+      isSetDone = 1;
+    }       
+  }
+  
+  return isSetDone;
+}
+
+unsigned char mmcLockUnlockCard(void)
+{
+  unsigned char isLockUnlockDone = 0;
+  unsigned short crc16;
+  unsigned int i = 0;
+  
+  /*clear the data buffer*/
+  for (i = 0; i < 520; i++)
+  {
+    mmc_read_write_buffer[i] = 0;
+  }
+  
+  /*set data in the buffer*/
+  mmc_read_write_buffer[0] = 0x04;
+  mmc_read_write_buffer[1] = 0x06;
+  mmc_read_write_buffer[2] = 0x00;
+  mmc_read_write_buffer[3] = 0x01;
+  mmc_read_write_buffer[4] = 0x02;
+  mmc_read_write_buffer[5] = 0x03;
+  mmc_read_write_buffer[6] = 0x04;
+  mmc_read_write_buffer[7] = 0x05;  
+  crc16 = CalcCRC16(mmc_read_write_buffer,512);
+ 
+  mmcSendCMD(CMD_42, 0x00000000);
+  mmcReadResponse(2);
+  if (mmcGetR1Response(2) == R1_COMPLETE)
+  { 
+    unsigned char isBusy = 0;
+    unsigned char temp, data_response_token;
+    
+    mmcWriteReadByte(0xFE);
+    mmcWriteBuffer(512);
+    mmcWriteReadByte((unsigned char)(crc16 >> 8));
+    mmcWriteReadByte((unsigned char)(crc16 & 0x00FF));
+
+    /*wait until the data response token is completely transmitted*/
+    isBusy = 0;
+    do
+    {
+      mmcReadResponse(RESPONSE_BUFFER_LENGTH);
+      temp = mmcGetDataResponseToken(&isBusy);
+      if (temp != 0xFF)
+      {
+        data_response_token = temp;
+      }
+    }while(isBusy == 1);
+    if (data_response_token == 0x02)  /*Data accepted*/
+    {
+      isLockUnlockDone = 1;
+    }       
+  }
+  
+  return isLockUnlockDone;
 }
 
 char mmcInitialization(void)
@@ -383,13 +503,31 @@ void mmcReadWriteBlockTest(void)
     goto error;
   }
   
-  /*3. erase first and second sectors*/
+  /*3. set a password*/
+  if (0 == mmcSetPassword())
+  {
+    goto error;
+  }
+   
+  /*4. lock the card with the password*/
+  /*if (0 == mmcLockUnlockCard())
+  {
+    goto error;
+  }*/
+
+  /*5. unlock the card with the password*/
+  /*if (0 == mmcLockUnlockCard())
+  {
+    goto error;
+  }*/
+    
+  /*6. erase first and second sectors*/
   if (0 == mmcEraseBlocks(sectorAddr, sectorAddr+1))
   {
     goto error;
   }
   
-  /*4. check the erased sectors*/
+  /*7. check the erased sectors*/
   for (i = 0; i < 2; i++)
   {
     if (csdReg.ReadBlockLength != mmcReadBlocks(csdReg, sectorAddr+i, csdReg.ReadBlockLength))
@@ -408,7 +546,7 @@ void mmcReadWriteBlockTest(void)
     }
   }
     
-  /*4. write a block of data into an MMC*/
+  /*8. write a block of data into an MMC*/
   for (i = 0; i < 512; i++)
   {
     mmc_read_write_buffer[i] = i;
@@ -420,13 +558,13 @@ void mmcReadWriteBlockTest(void)
     goto error;
   }
     
-  /*5. clear mmc_read_writer_buffer*/
+  /*9. clear mmc_read_writer_buffer*/
   for (i = 0; i < 512; i++)
   {
     mmc_read_write_buffer[i] = 0;
   }
     
-  /*6. read a block of data from an MMC*/
+  /*10. read a block of data from an MMC*/
   for (i = 0; i < 2; i++)
   {
     if (csdReg.ReadBlockLength != mmcReadBlocks(csdReg, sectorAddr+i, csdReg.ReadBlockLength))

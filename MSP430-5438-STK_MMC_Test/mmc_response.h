@@ -16,6 +16,7 @@
 #define CMD_32                          0x0020
 #define CMD_33                          0x0021
 #define CMD_38                          0x0026
+#define CMD_42                          0x002A
 #define CMD_55                          0x0037
 #define CMD_58                          0x003A
 #define ACMD_41                         0x0129
